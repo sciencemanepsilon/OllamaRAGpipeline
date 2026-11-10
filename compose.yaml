@@ -1,0 +1,32 @@
+services:
+  ollama:
+    #image: ollama/ollama:latest
+    image: alpine/ollama:latest
+    restart: unless-stopped
+    volumes:
+      #- ollama_models:/root/.ollama -named volume requires global persisten volume
+      - /root.ollama
+    # API accessible to other compose services; not published to the host.
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 8s
+      retries: 2
+      start_period: 20s
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      CHAT_MODEL: gemma3:1b
+      EMBEDDING_MODEL: embeddinggemma
+      MATCH_THRESHOLD: "0.45"
+      NOT_RELEVANT_THRESHOLD: "1.10"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - /chroma_data
