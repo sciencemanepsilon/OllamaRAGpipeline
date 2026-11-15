@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+  namespace: lesson
+spec:
+  selector:
+    matchLabels:
+      POD_LABEL: api-pod-label
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        POD_LABEL: api-pod-label
+      namespace: lesson
+    spec:
+      volumes:
+        - name: chromadb-volume
+          emptyDir: {}
+      containers:
+        - name: api-container
+          image: asia-south1-docker.pkg.dev/weje-2023/gke-weje-images-india/splitter:apiV1
+          ports:
+          - containerPort: 8000
+          resources:
+            requests:
+              memory: "200Mi"
+              cpu: "300m"
+          volumeMounts:
+            - name: chromadb-volume
+              mountPath: /chroma_data
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            initialDelaySeconds: 40
+            periodSeconds: 25
+            timeoutSeconds: 180
+            successThreshold: 1
+            failureThreshold: 3
+            tcpSocket:
+              port: 8000
+          livenessProbe:
+            periodSeconds: 12
+            timeoutSeconds: 8
+            successThreshold: 1
+            failureThreshold: 2
+            httpGet:
+              port: 8000
+              path: /health
+          readinessProbe:
+            periodSeconds: 27
+            timeoutSeconds: 120
+            successThreshold: 1
+            failureThreshold: 2
+            tcpSocket:
+              port: 8080
