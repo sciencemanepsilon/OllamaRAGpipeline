@@ -7,23 +7,32 @@ class ChromaNative:
     nResultsDefault = 1
 
     @classmethod
-    def GetQueryResults(cls, ref):
-        if cls.nResultsDefault > 1: return cls.ZipMethod(ref)
-        try: return ref["distances"][0][0], ref["documents"][0][0]
+    def GetQueryResults(cls, ref, vector=False):
+        # next, implement code for nResultsDefault > 1
+        if cls.nResultsDefault > 1: return cls.ZipMethod(ref, vector)
+        try:
+            if not vector: return ref["distances"][0][0], ref["documents"][0][0]
+            print(f"VECTOR DEBUG: len {len(ref['embeddings'][0][0][0])}")
+            return ref["distances"][0][0], ref["documents"][0][0], ref['embeddings'][0][0][0]
         except Exception as e:
             print(str(e))
-            return cls.ZipMethod(ref)
+            return cls.ZipMethod(ref, vector)
 
-    @staticmethod
-    def ZipMethod(ref):
+    @classmethod
+    def ZipMethod(cls, ref, vector):
+        refArgs = [ref["distances"][0], ref["documents"][0]]
         try:
-            dist, docs = zip(ref["distances"][0], ref["documents"][0])
-            pairs = [zip(dist[i], docs[i]) for i in range(len(dist[0]))]
+            if vector: refArgs.append(ref['embeddings'][0][0])
+            tu = zip(*refArgs)
+            pairs = [
+                zip(tu[0][i],tu[1][i],tu[2][i]) if vector
+                else zip(tu[0][i],tu[1][i]) for i in range(len(tu[0]))
+            ]
             # [ (0.2, metal table), (0.8, wood table) ]
             print(f"Query Result: {pairs}")
-            return pairs[0]
+            return pairs[0:cls.nResultsDefault]
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"staric.ZipMethod failed:{e}")
+            raise HTTPException(status_code=500, detail=f"static.ZipMethod failed:{e}")
     
     @staticmethod
     def GenIds(iterable):
