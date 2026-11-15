@@ -2,7 +2,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Path
 from pdf_input import Pdf_DataUpdater
-from SplitterStrategies import TableSplitters, TextSplitters
 from vector_db import refDB, catDB, ChromaNative
 
 from my_init import (
@@ -15,23 +14,27 @@ async def lifespan(app: FastAPI):
     if not (0 <= match_threshold < not_relevant_threshold <= 2):
         raise ValueError("Require 0 <= MATCH_THRESHOLD < NOT_RELEVANT_THRESHOLD <= 2")
 
-    Pdf_DataUpdater.OverWriteByLocalFile(
-        'Adams_Furniture_Store.pdf',
-        m1=TableSplitters.LangChainMethod, m2=TextSplitters.NlpMethod
-    )
+    # next, use env vars to set m1 and m2
     await asyncio.gather(
-        olla.pull(chat_model, stream=False), olla.pull(embedding_model, stream=False)
+        Pdf_DataUpdater.OverWriteByLocalFile(
+            'Adams_Furniture_Store.pdf', m1='Splitter/TableSimple', m2='Splitter/nlp'
+        ),
+        olla.pull(chat_model, stream=False),
+        olla.pull(embedding_model, stream=False)
     )
+    # next, use chromadb async client
     refDB.add(
-        documents=Pdf_DataUpdater.FURNITURE_REFERENCES,
-        ids=ChromaNative.GenIds(Pdf_DataUpdater.FURNITURE_REFERENCES)
+        documents=Pdf_DataUpdater.chunks,
+        ids=ChromaNative.GenIds(Pdf_DataUpdater.chunks),
+        metadatas=Pdf_DataUpdater.metadata
     )
     catDB.add(
-        documents=Pdf_DataUpdater.FURNITURE_REFERENCES,
-        ids=ChromaNative.GenIds(Pdf_DataUpdater.FURNITURE_REFERENCES)
+        documents=Pdf_DataUpdater.chunks,
+        ids=ChromaNative.GenIds(Pdf_DataUpdater.chunks),
+        metadatas=Pdf_DataUpdater.metadata
     )
     yield
-    await olla.close()
+    await asyncio.gather(olla.close(), Pdf_DataUpdater.hpx.aclose())
 
 
 app = FastAPI(
@@ -40,7 +43,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 @app.get("/health")
-async def health():
+def health():
     return {"status":"ok", "items":catDB.count()}
 
 
@@ -61,12 +64,19 @@ async def add_item(item: str = Path(min_length=1, max_length=160)):
             "status":"probably not furniture",
             "item":item, "distance":round(distance, 3), "closest_reference":docu
         }
-    async with lock: catalog_match = catDB.query(query_texts=[item], n_results=1)
-    distance, docu = ChromaNative.GetQueryResults(catalog_match)
+    async with lock:
+        catalog_match = catDB.query(
+            query_texts=[item],
+            n_results=1,
+            include=['distances','documents','embeddings']
+        )
+    distance, docu, vector = ChromaNative.GetQueryResults(catalog_match, vector=True)
     print(f"catDB.query, doc {docu} dist {distance}")
 
     if catalog_match is None or distance >= match_threshold:
-        async with lock: catDB.add(documents=[item], ids=ChromaNative.GenIds([item]))
+        async with lock:
+            # next, add metadata to the catalog VectorDB
+            catDB.add(documents=[item], embeddings=[vector], ids=ChromaNative.GenIds([item]))
         ApiResponse = {"status":"item added", "item":item, "total_items":catDB.count()}
         print("item added, End")
         if catalog_match is None: return ApiResponse
