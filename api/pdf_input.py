@@ -1,23 +1,24 @@
 from MyChunker import DoclingChunker, DoclingConverter
-from SplitterStrategies import SplitterBase, TableSplitters, TextSplitters
+import httpx
+from fastapi import HTTPException
 
 
 class Pdf_DataUpdater:
     docling = DoclingChunker()
-    FURNITURE_CATALOG, FURNITURE_REFERENCES = (None,None)
+    chunks, metadata = (None, None)
+    hpx = httpx.AsyncClient(timeout=0)
 
     @classmethod
-    def OverWriteByLocalFile(cls, FileName, m1=TableSplitters.Simple, m2=TextSplitters.NlpMethod):
+    async def OverWriteByLocalFile(cls, FileName, m1='Splitter/TableSimple', m2='Splitter/nlp'):
         cov = DoclingConverter(FileName)
         DocIterator = DoclingItemsIterator(cls.docling.tokenizer)
 
         for i, chunk in enumerate(cls.docling.chunker.chunk(cov.document)):
             print(f"--- Chunk {i} ---")
-            DocIterator.Run(i, chunk, TABLE_SPLITTER=m1, TEXT_SPLITTER=m2)
+            await DocIterator.Run(i, chunk, tableMethod=m1, textMethod=m2)
 
-        print(DocIterator.strings[0:15])
-        cls.FURNITURE_CATALOG = DocIterator.chunks
-        cls.FURNITURE_REFERENCES = DocIterator.strings
+        cls.metadata = DocIterator.metadata
+        cls.chunks = DocIterator.chunks
 
 
 class DoclingItemsIterator:
@@ -25,7 +26,18 @@ class DoclingItemsIterator:
         self.MAX_TOKENS_LIMIT = 50
         self.tokenizer = tokenizer
         self.headings = None
-        self.chunks, self.strings = [],[]
+        self.metadata, self.chunks = [],[]
+        self.BaseUrl = 'http://splitter-svc:6001'
+    
+    async def MakeRequest(self, line, i, j, item, headings, method):
+        response = await Pdf_DataUpdater.hpx.post(
+            f'{self.BaseUrl}/{method}/{i}/{j}',
+            json={'text':line, 'headings':headings, 'SplitMeth':None},
+            params={'item':item.self_ref}
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="splitter-svc non 200")
+        return response.json()
     
     def ValidateItemsVsLines(self, chunk):
         lines = chunk.text.splitlines()
@@ -40,26 +52,25 @@ class DoclingItemsIterator:
         print(f"{nTokens} {len(chunk.text)} {chunk.text}")
         return label, nTokens
 
-    def Run(self, i, chunk, TABLE_SPLITTER=TableSplitters.Simple, TEXT_SPLITTER=TextSplitters.NlpMethod):
+    async def Run(self, i, chunk, tableMethod=None, textMethod=None):
         self.headings, lines = self.ValidateItemsVsLines(chunk)
         for j, item in enumerate(chunk.meta.doc_items):
             label, nTokens = self.GatherItemInfo(item, lines[j], chunk)
             match label:
-                case 'table': self.HandleTable(lines[j], i, j, item, method=TABLE_SPLITTER)
-                case 'text': self.HandleText(nTokens, chunk, item, lines[j], i, j, method=TEXT_SPLITTER)
+                case 'table': await self.HandleTable(lines[j], i, j, item, tableMethod)
+                case 'text': await self.HandleText(nTokens, item, lines[j], i, j, textMethod)
                 case _: continue
 
-    def HandleText(self, nTokens, chunk, item, line, i, j, method=None):
+    async def HandleText(self, nTokens, item, line, i, j, method):
         if nTokens < self.MAX_TOKENS_LIMIT:
-            strings = [chunk.text]
-            records = [SplitterBase.ChunkRecord(
-                i, j, chunk.text, item, self.headings, None, nTokens
-            )]
-        else: strings, records = method(line, i, j, item, self.headings, self.tokenizer)
-        self.chunks.extend(records)
-        self.strings.extend(strings)
+            strings = [line]
+            records = [await self.MakeRequest(line, i, j, item, self.headings, method)]
 
-    def HandleTable(self, line, i, j, item, method=TableSplitters.Simple):
-        array, RecordList = method(line, i, j, item, self.headings, self.tokenizer)
-        self.chunks.extend(RecordList)
-        self.strings.extend(array)
+        else: strings, records = await self.MakeRequest(line, i, j, item, self.headings, method)
+        self.metadata.extend(records)
+        self.chunks.extend(strings)
+
+    async def HandleTable(self, line, i, j, item, method):
+        array, RecordList = await self.MakeRequest(line, i, j, item, self.headings, method)
+        self.metadata.extend(RecordList)
+        self.chunks.extend(array)

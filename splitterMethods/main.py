@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 from methods import SplitterBase, TableSplitters, TextSplitters
 app = Flask(__name__)
 
-
 class EndpointBase:
     method = {
         'nlp': TextSplitters.NlpMethod,
@@ -20,6 +19,7 @@ class EndpointBase:
 
 
 
+
 @app.route('/ChunkRecord/<i>/<j>', methods=['POST'])
 def ChunkRecord(i, j):
     item = request.args.get('item')
@@ -31,7 +31,7 @@ def ChunkRecord(i, j):
 
 
 @app.route('/Splitter/<label>/<i>/<j>', methods=['POST'])
-def TableSimple(label, i, j):
+def SplitterMethods(label, i, j):
     StringList, RecordList = EndpointBase.Run(
         request.args.get('item'), request.get_json(), i, j, label
     )
