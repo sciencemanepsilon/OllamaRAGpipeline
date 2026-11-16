@@ -7,12 +7,12 @@ class ChromaNative:
     nResultsDefault = 1
 
     @classmethod
-    def GetQueryResults(cls, ref, vector=False):
+    def GetQueryResults(cls, ref, vector=False, meta=False):
         # next, implement code for nResultsDefault > 1
-        if cls.nResultsDefault > 1: return cls.ZipMethod(ref, vector)
+        if cls.nResultsDefault > 1: return cls.ZipMethod(ref, vector, meta)
         try:
             data = [ref["distances"][0][0], ref["documents"][0][0]]
-            if 'metadatas' in ref: data.append(ref['metadatas'][0][0])
+            if meta: data.append(ref['metadatas'][0][0])
             if vector:
                 emb = ref['embeddings'][0][0][0]
                 data.append(emb)
@@ -20,21 +20,20 @@ class ChromaNative:
             return data
         except Exception as e:
             print(str(e))
-            return cls.ZipMethod(ref, vector)
+            return cls.ZipMethod(ref, vector, meta)
 
     @classmethod
-    def ZipMethod(cls, ref, vector):
+    def ZipMethod(cls, ref, vector, meta):
         refArgs = [ref["distances"][0], ref["documents"][0]]
         try:
-            if 'metadatas' in ref: refArgs.append(ref['metadatas'][0])
+            if meta: refArgs.append(ref['metadatas'][0])
             if vector: refArgs.append(ref['embeddings'][0][0])
             tu = zip(*refArgs)
             ltu, ltu0 = len(tu), len(tu[0])
-            match ltu:
-                case 2: pairs = [zip(tu[0][i],tu[1][i]) for i in range(ltu0)]
-                case 3: pairs = [zip(tu[0][i],tu[1][i],tu[2][i]) for i in range(ltu0)]
-                case 4: pairs = [zip(tu[0][i],tu[1][i],tu[2][i],tu[3][i]) for i in range(ltu0)]
-                # [ (0.2, metal table), (0.8, wood table) ]
+            if ltu==2: pairs = [zip(tu[0][i],tu[1][i]) for i in range(ltu0)]
+            if ltu==3: pairs = [zip(tu[0][i],tu[1][i],tu[2][i]) for i in range(ltu0)]
+            if ltu==4: pairs = [zip(tu[0][i],tu[1][i],tu[2][i],tu[3][i]) for i in range(ltu0)]
+            # [ (0.2, metal table), (0.8, wood table) ]
             print(f"Query Result: {pairs}")
             return pairs[0:cls.nResultsDefault]
         except Exception as e:

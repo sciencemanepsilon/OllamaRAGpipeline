@@ -4,10 +4,11 @@ metadata:
     name: rag-pipeline-configmap
     namespace: lesson
 data:
-    OLLAMA_HOST: http://ollama:11434
+    OLLAMA_HOST: http://ollama-svc:6002
+    SPLITTER_HOST: http://splitter-svc:6001
     CHAT_MODEL: gemma3:1b
     EMBEDDING_MODEL: embeddinggemma
     # ChromaDB returns (l2) squared euclidian distance values
     # thus, treshold values needs to be adjusted
-    MATCH_THRESHOLD: '0.45'
-    NOT_RELEVANT_THRESHOLD: '1.1'
+    MATCH_THRESHOLD: '0.4'
+    NOT_RELEVANT_THRESHOLD: '0.667'

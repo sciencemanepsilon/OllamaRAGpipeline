@@ -19,16 +19,19 @@ spec:
           emptyDir: {}
       containers:
         - name: api-container
-          image: asia-south1-docker.pkg.dev/weje-2023/gke-weje-images-india/splitter:apiV1
+          image: asia-south1-docker.pkg.dev/weje-2023/gke-weje-images-india/splitter:apiV7
           ports:
           - containerPort: 8000
           resources:
             requests:
-              memory: "200Mi"
-              cpu: "300m"
+              memory: "1200Mi"
+              cpu: "20m"
           volumeMounts:
             - name: chromadb-volume
               mountPath: /chroma_data
+          envFrom:
+            - configMapRef:
+                name: rag-pipeline-configmap
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -57,4 +60,4 @@ spec:
             successThreshold: 1
             failureThreshold: 2
             tcpSocket:
-              port: 8080
+              port: 8000

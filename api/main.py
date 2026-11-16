@@ -65,18 +65,19 @@ async def add_item(item: str = Path(min_length=1, max_length=160)):
             "status":"probably not furniture",
             "item":item, "distance":round(distance, 3), "closest_reference":docu
         }
+    # Let a LLM breakdown the item to its core information
     async with lock:
         catalog_match = catDB.query(
             n_results=1, query_embeddings=vector,
             include=['distances','documents','metadatas']
         )
-    distance, docu, meta = ChromaNative.GetQueryResults(catalog_match)
+    distance, docu, meta = ChromaNative.GetQueryResults(catalog_match, meta=True)
     print(f"catDB.query, doc {docu} dist {distance} meta {meta}")
 
     if catalog_match is None or distance >= match_threshold:
+        # Let a LLM breakdown the item to its core information
         # use LLM to classify item into our metadata.headings
-        # Else, let LLM breakdown the item to its core information
-        # and create a new heading + item.self_ref
+        # Else: create a new heading + item.self_ref
         # add the modified item and its metadata to the catalog VectorDB
         async with lock:
             catDB.add(documents=[item], embeddings=vector, ids=ChromaNative.GenIds([item]))
@@ -87,7 +88,8 @@ async def add_item(item: str = Path(min_length=1, max_length=160)):
         return ApiResponse
     
     if distance < match_threshold:
-        promt = chat_prompt.format(item, meta['headings'], docu)
+        heading = 'not found' if meta is None else meta['headings']
+        promt = chat_prompt.format(item, heading, docu)
         interpretation = await olla.chat(
             model=chat_model, options={"temperature": 0}, messages=[
             {"role": "system", "content": sys_promt},
@@ -97,6 +99,6 @@ async def add_item(item: str = Path(min_length=1, max_length=160)):
         return {
             "status":"already similar (RAG Response)",
             "item":item, "similar_to":docu,
-            "section":meta['headings'], "distance":round(distance, 3),
+            "section":heading, "distance":round(distance, 3),
             "meaning":interpretation.message.content.strip() or "Chat failed"
         }
